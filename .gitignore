@@ -10,3 +10,4 @@ __pycache__/
 ./py_venv/
 py_venv/
 demo.txt
+04-Convolutional Neural Networks/week4/Neural Style Transfer/output/*.png
