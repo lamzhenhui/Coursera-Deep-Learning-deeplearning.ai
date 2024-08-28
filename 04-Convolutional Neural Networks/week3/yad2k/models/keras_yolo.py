@@ -4,13 +4,15 @@ import sys
 import numpy as np
 import tensorflow as tf
 from keras import backend as K
-from keras.api.layers import Lambda
-from keras.api.layers.merge import concatenate
-from keras.api.models import Model
+# import tensorflow.compat.v1.keras.backend as K
+from keras.layers import Lambda
+from keras.layers import concatenate
+from keras.models import Model
+from utils_tool.utils import utils
 
 from ..utils import compose
-from .keras_darknet19 import (
-    DarknetConv2D, DarknetConv2D_BN_Leaky, darknet_body)
+from .keras_darknet19 import (DarknetConv2D, DarknetConv2D_BN_Leaky,
+                              darknet_body)
 
 sys.path.append('..')
 
@@ -88,31 +90,77 @@ def yolo_head(feats, anchors, num_classes):
     """
     num_anchors = len(anchors)
     # Reshape to batch, height, width, num_anchors, box_params.
-    anchors_tensor = K.reshape(K.variable(anchors), [1, 1, 1, num_anchors, 2])
+    if utils.keras_version_check_v2:
+
+        anchors_tensor = tf.reshape(tf.Variable(
+            anchors), [1, 1, 1, num_anchors, 2])
+    else:
+        anchors_tensor = K.reshape(K.variable(
+            anchors), [1, 1, 1, num_anchors, 2])
+
     # Static implementation for fixed models.
     # TODO: Remove or add option for static implementation.
     # _, conv_height, conv_width, _ = K.int_shape(feats)
     # conv_dims = K.variable([conv_width, conv_height])
 
     # Dynamic implementation of conv dims for fully convolutional model.
-    conv_dims = K.shape(feats)[1:3]  # assuming channels last
+    if utils.keras_version_check_v2:
+        print(feats)
+        print(type(feats))
+        # print(tf.shape(feats))
+        # feats = tf.function([], [feats])()[0]
+        print(tf.compat.v1.keras.backend.int_shape(feats))
+
+        conv_dims = tf.compat.v1.keras.backend.int_shape(
+            feats)[1:3]  # assuming channels last
+    else:
+        conv_dims = K.shape(feats)[1:3]  # assuming channels last
     # In YOLO the height index is the inner most iteration.
-    conv_height_index = K.arange(0, stop=conv_dims[0])
-    conv_width_index = K.arange(0, stop=conv_dims[1])
-    conv_height_index = K.tile(conv_height_index, [conv_dims[1]])
+    if utils.keras_version_check_v2:
+        conv_height_index = tf.compat.v1.keras.backend.arange(
+            0, stop=conv_dims[0])
+        conv_width_index = tf.compat.v1.keras.backend.arange(
+            0, stop=conv_dims[1])
+        conv_height_index = tf.tile(conv_height_index, [conv_dims[1]])
+    else:
+        conv_height_index = K.arange(0, stop=conv_dims[0])
+        conv_width_index = K.arange(0, stop=conv_dims[1])
+        conv_height_index = K.tile(conv_height_index, [conv_dims[1]])
 
     # TODO: Repeat_elements and tf.split doesn't support dynamic splits.
     # conv_width_index = K.repeat_elements(conv_width_index, conv_dims[1], axis=0)
-    conv_width_index = K.tile(K.expand_dims(
-        conv_width_index, 0), [conv_dims[0], 1])
-    conv_width_index = K.flatten(K.transpose(conv_width_index))
-    conv_index = K.transpose(K.stack([conv_height_index, conv_width_index]))
-    conv_index = K.reshape(conv_index, [1, conv_dims[0], conv_dims[1], 1, 2])
-    conv_index = K.cast(conv_index, K.dtype(feats))
+    conv_width_index = tf.tile(
+        tf.compat.v1.keras.backend.expand_dims(conv_width_index, 0), [conv_dims[0], 1])
+    conv_width_index = tf.compat.v1.keras.backend.flatten(
+        tf.compat.v1.keras.backend.transpose(conv_width_index))
+    conv_index = tf.compat.v1.keras.backend.transpose(
+        tf.stack([conv_height_index, conv_width_index]))
+    conv_index = tf.reshape(conv_index, [1, conv_dims[0], conv_dims[1], 1, 2])
+    # conv_index = tf.reshape(conv_index, [1, conv_dims[0], conv_dims[1], 1, 1])
 
-    feats = K.reshape(
-        feats, [-1, conv_dims[0], conv_dims[1], num_anchors, num_classes + 5])
-    conv_dims = K.cast(K.reshape(conv_dims, [1, 1, 1, 1, 2]), K.dtype(feats))
+    if utils.keras_version_check_v2:
+        conv_index = tf.compat.v1.keras.backend.cast(
+            conv_index, tf.compat.v1.keras.backend.dtype(feats))
+        feats = tf.reshape(
+            feats, [-1, conv_dims[0], conv_dims[1], num_anchors, num_classes + 5])
+        conv_dims = tf.compat.v1.keras.backend.cast(
+            tf.reshape(conv_dims, [1, 1, 1, 1, 2]), tf.compat.v1.keras.backend.dtype(feats))
+        box_xy = tf.sigmoid(feats[..., :2])
+        # box_xy = tf.sigmoid(feats[..., :1])
+        box_wh = tf.exp(feats[..., 2:4])
+        box_confidence = tf.sigmoid(feats[..., 4:5])
+        box_class_probs = tf.compat.v1.keras.backend.softmax(feats[..., 5:])
+    else:
+        feats = K.reshape(
+            feats, [-1, conv_dims[0], conv_dims[1], num_anchors, num_classes + 5])
+        conv_dims = K.cast(
+            K.reshape(conv_dims, [1, 1, 1, 1, 2]), K.dtype(feats))
+        conv_index = tf.compat.v1.keras.backend.cast(
+            conv_index, K.dtype(feats))
+        box_xy = K.sigmoid(feats[..., :2])
+        box_wh = K.exp(feats[..., 2:4])
+        box_confidence = K.sigmoid(feats[..., 4:5])
+        box_class_probs = K.softmax(feats[..., 5:])
 
     # Static generation of conv_index:
     # conv_index = np.array([_ for _ in np.ndindex(conv_width, conv_height)])
@@ -122,14 +170,15 @@ def yolo_head(feats, anchors, num_classes):
     # feats = Reshape(
     #     (conv_dims[0], conv_dims[1], num_anchors, num_classes + 5))(feats)
 
-    box_confidence = K.sigmoid(feats[..., 4:5])
-    box_xy = K.sigmoid(feats[..., :2])
-    box_wh = K.exp(feats[..., 2:4])
-    box_class_probs = K.softmax(feats[..., 5:])
-
     # Adjust preditions to each spatial grid point and anchor size.
     # Note: YOLO iterates over height index before width index.
+    print('box_xy_shape_before', box_xy.shape)
     box_xy = (box_xy + conv_index) / conv_dims
+    print('box_xy_shape', box_xy.shape)
+    box_wh = tf.cast(box_wh, tf.float32)
+    anchors_tensor = tf.cast(anchors_tensor, tf.float32)
+    # print(type(box_wh), type(anchors_tensor), type(conv_dims))
+    # raise Exception
     box_wh = box_wh * anchors_tensor / conv_dims
 
     return box_confidence, box_xy, box_wh, box_class_probs
@@ -139,13 +188,26 @@ def yolo_boxes_to_corners(box_xy, box_wh):
     """Convert YOLO box predictions to bounding box corners."""
     box_mins = box_xy - (box_wh / 2.)
     box_maxes = box_xy + (box_wh / 2.)
-
-    return K.concatenate([
-        box_mins[..., 1:2],  # y_min
-        box_mins[..., 0:1],  # x_min
-        box_maxes[..., 1:2],  # y_max
-        box_maxes[..., 0:1]  # x_max
-    ])
+    if utils.keras_version_check_v2:
+        return tf.compat.v1.keras.layers.concatenate([
+            box_mins[..., 1:2],  # y_min
+            box_mins[..., 0:1],  # x_min
+            box_maxes[..., 1:2],  # y_max
+            box_maxes[..., 0:1]  # x_max
+        ])
+        # return K.concatenate([
+        #     box_mins[..., 1:2],  # y_min
+        #     box_mins[..., 0:1],  # x_min
+        #     box_maxes[..., 1:2],  # y_max
+        #     box_maxes[..., 0:1]  # x_max
+        # ])
+    else:
+        return K.concatenate([
+            box_mins[..., 1:2],  # y_min
+            box_mins[..., 0:1],  # x_min
+            box_maxes[..., 1:2],  # y_max
+            box_maxes[..., 0:1]  # x_max
+        ])
 
 
 def yolo_loss(args,
@@ -305,9 +367,8 @@ def yolo(inputs, anchors, num_classes):
     return outputs
 
 
-def yolo_filter_boxes(box_confidence, boxes, box_class_probs, threshold=.6):
+def yolo_filter_boxes(boxes, box_confidence, box_class_probs, threshold=.6):
     """Filter YOLO boxes based on object and class confidence."""
-
     box_scores = box_confidence * box_class_probs
     box_classes = K.argmax(box_scores, axis=-1)
     box_class_scores = K.max(box_scores, axis=-1)
@@ -317,7 +378,6 @@ def yolo_filter_boxes(box_confidence, boxes, box_class_probs, threshold=.6):
     boxes = tf.boolean_mask(boxes, prediction_mask)
     scores = tf.boolean_mask(box_class_scores, prediction_mask)
     classes = tf.boolean_mask(box_classes, prediction_mask)
-
     return boxes, scores, classes
 
 
@@ -327,10 +387,10 @@ def yolo_eval(yolo_outputs,
               score_threshold=.6,
               iou_threshold=.5):
     """Evaluate YOLO model on given input batch and return filtered boxes."""
-    box_confidence, box_xy, box_wh, box_class_probs = yolo_outputs
+    box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
     boxes = yolo_boxes_to_corners(box_xy, box_wh)
     boxes, scores, classes = yolo_filter_boxes(
-        box_confidence, boxes, box_class_probs, threshold=score_threshold)
+        boxes, box_confidence, box_class_probs, threshold=score_threshold)
 
     # Scale boxes back to original image shape.
     height = image_shape[0]
@@ -347,7 +407,6 @@ def yolo_eval(yolo_outputs,
     boxes = K.gather(boxes, nms_index)
     scores = K.gather(scores, nms_index)
     classes = K.gather(classes, nms_index)
-
     return boxes, scores, classes
 
 
@@ -397,10 +456,9 @@ def preprocess_true_boxes(true_boxes, anchors, image_size):
         box = box[0:4] * np.array(
             [conv_width, conv_height, conv_width, conv_height])
         i = np.floor(box[1]).astype('int')
-        j = min(np.floor(box[0]).astype('int'), 1)
+        j = np.floor(box[0]).astype('int')
         best_iou = 0
         best_anchor = 0
-
         for k, anchor in enumerate(anchors):
             # Find IOU between box shifted to origin and anchor box.
             box_maxes = box[2:4] / 2.

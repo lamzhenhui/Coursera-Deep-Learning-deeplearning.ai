@@ -21,16 +21,21 @@ def keras_version_check_v2():
 
 
 def version_check(pack_name='', vesion_lg_parse=''):
-    from scipy import __version__ as pac_version
+    import importlib
     from packaging import version
+
+    def get_module_version(pack_name):
+        module = importlib.import_module(pack_name)
+        return module.__version__
+    # from pack_name import __version__ as pac_version
 
     # 获取Keras版本
     # print("Keras Version:", keras_version)
 
     # 检查Keras版本是否大于2
 
-    if version.parse(pac_version) > version.parse(vesion_lg_parse):
-        # print("Keras版本大于2")
+    print(get_module_version(pack_name))
+    if version.parse(get_module_version(pack_name)) > version.parse(vesion_lg_parse):
         return True
         # 使用Keras 2.x的API
     else:
