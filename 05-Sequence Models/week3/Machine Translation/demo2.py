@@ -171,6 +171,8 @@ for example in EXAMPLES:
           s0[:1].shape,
           c0[:1].shape)
     prediction = model.predict([source.reshape(1, 30, 37), s0[:1], c0[:1]])
+    print(source.reshape(1, 30, 37).shape, s0[:1].shape, c0[:1].shape)
+    print('source.reshape(1, 30, 37).shape, s0[:1].shape, c0[:1].shape')
     # prediction = model.predict(
     #     [source.reshape(1, 30, 37), s0.reshape(1, 30, 37), c0.reshape(1, 30, 37)])
     prediction = np.argmax(prediction, axis=-1)
@@ -178,7 +180,7 @@ for example in EXAMPLES:
 
     print("输入:", example)
     print("预测值:", ''.join(output))
-
+model.summary()
 # 可视化注意力权重值
 attention_map = plot_attention_map(
     model, human_vocab, inv_machine_vocab, "Tuesday 09 Oct 1993", num=7, n_s=64)
