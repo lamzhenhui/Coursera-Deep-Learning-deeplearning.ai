@@ -217,7 +217,9 @@ def softmax(x, axis=1):
         raise ValueError('Cannot apply softmax to a tensor that is 1D')
 
 
-def plot_attention_map(model, input_vocabulary, inv_output_vocabulary, text, n_s=128, num=6, Tx=30, Ty=10):
+def plot_attention_map(
+        model, input_vocabulary, inv_output_vocabulary,
+        text, n_s=128, num=6, Tx=30, Ty=10):
     """
     Plot the attention map.
 
@@ -231,33 +233,40 @@ def plot_attention_map(model, input_vocabulary, inv_output_vocabulary, text, n_s
 
     encoded = np.array(string_to_int(
         text, Tx, input_vocabulary)).reshape((1, 30))
+    print(encoded, 'encoded')
     encoded = np.array(list(map(lambda x: to_categorical(
         x, num_classes=len(input_vocabulary)), encoded)))
+    print(encoded)
     from keras.models import Model
     from keras import __version__ as keras_version
-    print(keras_version)
+    # print(keras_version) # 3.5.0
 
     # f = K.function(model.inputs, [layer.get_output_at(t) for t in range(Ty)])
-    print(model.inputs)
-    print(Ty, 'Ty')
-    print([model.layers[t].output for t in range(Ty)])
+    # print(model.inputs)
+    # print(Ty, 'Ty')
+    # print([model.layers[t].output for t in range(100)])
+    # for t in range(100):
+    #     print(model.layers[t].output, '>>')
+    # raise Exception
     f = Model(model.inputs, [model.layers[t].output for t in range(Ty)])
-    print(encoded.shape, s0.shape, c0.shape)
-    print('encoded.shape, s0.shape,c0.shape')
+    # print(encoded.shape, s0.shape, c0.shape)
+    # print('encoded.shape, s0.shape,c0.shape')
     r = f([encoded, s0, c0])
-    print(Ty, Tx, 'Ty, Tx')
+    # print(Ty, Tx, 'Ty, Tx')
     """"AttributeError: 'Activation' object has no attribute 'get_output_at'"""
     # print(r, 'r')
-    for print_shape in r:
-        print(print_shape.shape, 'print_shape')
-    raise Exception
+    # raise Exception
+    # print(r[7])
+    # raise Exception
     for t in range(Ty):
-        for t_prime in range(Tx):
-            # if t_prime > t:
-            # continue
-            print(t, t_prime, 't t_prime')
-            print(r[t])
-            attention_map[t][t_prime] = r[t][0, t_prime, 0]
+        if t == 7:
+            for t_prime in range(Tx):
+                # if t_prime > t:
+                # continue
+                # print(t, t_prime, 't t_prime')
+                # print(r[t])
+                attention_map[t][t_prime] = r[t][0, t_prime, 0]
+    # print(attention_map, 'attention_map')
 
     # Normalize attention map
 #     row_max = attention_map.max(axis=1)
